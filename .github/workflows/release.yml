@@ -1,0 +1,40 @@
+name: release
+on:
+  push:
+    tags:
+    - 'v*'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Unshallow
+      run: git fetch --prune --unshallow
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+    - name: Build
+      run: |
+        go build -o inflxudbv2-database-plugin cmd/inflxudbv2-database-plugin/main.go
+    - name: Create GitHub release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        draft: false
+        prerelease: false
+        release_name: ${{ github.event.release.tag_name }}
+        tag_name: ${{ github.event.release.tag_name }}
+        body: ${{ github.event.head_commit.message }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload binary
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: inflxudbv2-database-plugin
+        asset_name: inflxudbv2-database-plugin
+        asset_content_type: application/gzip

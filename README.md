@@ -4,6 +4,9 @@ The InfluxdbV2 database plugin is a plugin for the database
 secrets engine. This plugin generates database credentials dynamically based on
 configured roles for the Influxdb database.
 
+## Build
+To build this package for any platform you will need to clone this repository and cd into the repo directory and `go build -o inflxudbv2-database-plugin cmd/inflxudbv2-database-plugin/main.go`.
+
 ## Configure Connection
 
 In addition to the parameters defined by the [Database

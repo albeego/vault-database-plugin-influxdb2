@@ -119,7 +119,7 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 		}
 		return dbplugin.NewUserResponse{}, fmt.Errorf("failed to run query in InfluxDB: %w", err)
 	}
-	organization, err := cli.OrganizationsAPI().FindOrganizationByName(ctx, i.Organization)
+	organization, err := cli.OrganizationsAPI().FindOrganizationByName(ctx, stmt.Organization)
 	if err != nil {
 		// Attempt rollback only when the response has an error
 		err2 := cli.UsersAPI().DeleteUser(ctx, user)
@@ -137,7 +137,7 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 		}
 		return dbplugin.NewUserResponse{}, fmt.Errorf("failed to run query in InfluxDB: %w", err)
 	}
-	bucket, err := cli.BucketsAPI().FindBucketByName(ctx, i.DefaultBucket)
+	bucket, err := cli.BucketsAPI().FindBucketByName(ctx, stmt.Bucket)
 	if err != nil {
 		// Attempt rollback only when the response has an error
 		err2 := cli.UsersAPI().DeleteUser(ctx, user)
@@ -284,6 +284,8 @@ func newCreationStatement(statements dbplugin.Statements) (*creationStatement, e
 }
 
 type creationStatement struct {
-	Read  bool `json:"read_permission"`
-	Write bool `json:"write_permission"`
+	Organization string `json:"organization"`
+	Bucket       string `json:"bucket"`
+	Read         bool   `json:"read_permission"`
+	Write        bool   `json:"write_permission"`
 }

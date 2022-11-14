@@ -226,7 +226,7 @@ func TestInfluxdb_CreateUser_DefaultUsernameTemplate(t *testing.T) {
 			RoleName:    "mylongrolenamewithmanycharacters",
 		},
 		Statements: dbplugin.Statements{
-			Commands: []string{createUserStatements},
+			Commands: []string{`{"read_permission": true, "write_permission": true}`},
 		},
 		Password:   password,
 		Expiration: time.Now().Add(1 * time.Minute),
@@ -264,7 +264,7 @@ func TestInfluxdb_CreateUser_CustomUsernameTemplate(t *testing.T) {
 			RoleName:    "mylongrolenamewithmanycharacters",
 		},
 		Statements: dbplugin.Statements{
-			Commands: []string{createUserStatements},
+			Commands: []string{`{"read_permission": true, "write_permission": true}`},
 		},
 		Password:   password,
 		Expiration: time.Now().Add(1 * time.Minute),
@@ -298,7 +298,7 @@ func TestInfluxdb_CreateUser_AddedToOrganization(t *testing.T) {
 			RoleName:    "mylongrolenamewithmanycharacters",
 		},
 		Statements: dbplugin.Statements{
-			Commands: []string{createUserStatements},
+			Commands: []string{`{"read_permission": true, "write_permission": true, "organization": "vault"}`},
 		},
 		Password:   password,
 		Expiration: time.Now().Add(1 * time.Minute),
@@ -309,7 +309,39 @@ func TestInfluxdb_CreateUser_AddedToOrganization(t *testing.T) {
 		t.Fatalf("Missing username")
 	}
 
-	assertUserHasOrganization(t, resp.Username, config.connectionParams()["organization"].(string), *config, ctx)
+	assertUserHasOrganization(t, resp.Username, "vault", *config, ctx)
+}
+
+func TestInfluxdb_CreateUser_AddedToBucket(t *testing.T) {
+	cleanup, config, ctx := prepareInfluxdbTestContainer(t)
+	defer cleanup()
+
+	db := influxdbV2()
+	req := dbplugin.InitializeRequest{
+		Config:           config.connectionParams(),
+		VerifyConnection: true,
+	}
+	dbtesting.AssertInitialize(t, db, req)
+
+	password := "nuozxby98523u89bdfnkjl"
+	newUserReq := dbplugin.NewUserRequest{
+		UsernameConfig: dbplugin.UsernameMetadata{
+			DisplayName: "token",
+			RoleName:    "mylongrolenamewithmanycharacters",
+		},
+		Statements: dbplugin.Statements{
+			Commands: []string{`{"read_permission": true, "write_permission": true, "organization": "vault", "bucket": "vault"}`},
+		},
+		Password:   password,
+		Expiration: time.Now().Add(1 * time.Minute),
+	}
+	resp := dbtesting.AssertNewUser(t, db, newUserReq)
+
+	if resp.Username == "" {
+		t.Fatalf("Missing username")
+	}
+
+	assertUserHasBucket(t, resp.Username, "vault", *config, ctx)
 }
 
 func TestUpdateUser_expiration(t *testing.T) {
@@ -332,7 +364,7 @@ func TestUpdateUser_expiration(t *testing.T) {
 			RoleName:    "test",
 		},
 		Statements: dbplugin.Statements{
-			Commands: []string{createUserStatements},
+			Commands: []string{`{"read_permission": true, "write_permission": true}`},
 		},
 		Password:   password,
 		Expiration: time.Now().Add(1 * time.Minute),
@@ -371,7 +403,7 @@ func TestUpdateUser_password(t *testing.T) {
 			RoleName:    "test",
 		},
 		Statements: dbplugin.Statements{
-			Commands: []string{createUserStatements},
+			Commands: []string{`{"read_permission": true, "write_permission": true}`},
 		},
 		Password:   initialPassword,
 		Expiration: time.Now().Add(1 * time.Minute),
@@ -440,7 +472,7 @@ func TestInfluxdb_RevokeUser(t *testing.T) {
 			RoleName:    "test",
 		},
 		Statements: dbplugin.Statements{
-			Commands: []string{createUserStatements},
+			Commands: []string{`{"read_permission": true, "write_permission": true}`},
 		},
 		Password:   initialPassword,
 		Expiration: time.Now().Add(1 * time.Minute),
@@ -480,6 +512,14 @@ func assertUserHasOrganization(t testing.TB, username, organizationName string, 
 	}
 }
 
+func assertUserHasBucket(t testing.TB, username, bucketName string, c Config, ctx context.Context) {
+	t.Helper()
+	err := testUserHasBucket(username, bucketName, c, ctx)
+	if err != nil {
+		t.Fatalf("User %q does not belong to bucket %q when it should", username, bucketName)
+	}
+}
+
 func testCredsExist(username, password string, c Config, ctx context.Context) error {
 	cli := influx.NewClient(c.URL().String(), c.Token)
 	defer cli.Close()
@@ -512,4 +552,27 @@ func testUserHasOrganization(username, organizationName string, c Config, ctx co
 		}
 	}
 	return fmt.Errorf("user %s does not belong to organization %s", username, organizationName)
+}
+
+func testUserHasBucket(username, bucketName string, c Config, ctx context.Context) error {
+	cli := influx.NewClient(c.URL().String(), c.Token)
+	defer cli.Close()
+	_, err := cli.Ping(ctx)
+	if err != nil {
+		return fmt.Errorf("error checking server ping: %w", err)
+	}
+	bucket, err := cli.BucketsAPI().FindBucketByName(ctx, bucketName)
+	if err != nil {
+		return fmt.Errorf("error querying influxdb server: %w", err)
+	}
+	members, err := cli.BucketsAPI().GetMembers(ctx, bucket)
+	if err != nil {
+		return fmt.Errorf("error querying influxdb server: %w", err)
+	}
+	for _, member := range *members {
+		if member.Name == username {
+			return nil
+		}
+	}
+	return fmt.Errorf("user %s does not belong to bucket %s", username, bucketName)
 }
