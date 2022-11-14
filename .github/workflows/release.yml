@@ -19,6 +19,9 @@ jobs:
       run: |
         go mod tidy
         go build -o inflxudbv2-database-plugin cmd/inflxudbv2-database-plugin/main.go
+    - name: Calculate SHA256 checksum
+      run: |
+        sha256 sum vault/plugins/vault-plugin-secrets-hashicups | cut -d ' ' -f1 > inflxudbv2-database-plugin.sha256
     - name: Create GitHub release
       uses: actions/create-release@v1
       id: create_release
@@ -39,3 +42,12 @@ jobs:
         asset_path: inflxudbv2-database-plugin
         asset_name: inflxudbv2-database-plugin
         asset_content_type: application/gzip
+    - name: Upload checksum
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: inflxudbv2-database-plugin.sha256
+        asset_name: inflxudbv2-database-plugin.sha256
+        asset_content_type: text/plain
