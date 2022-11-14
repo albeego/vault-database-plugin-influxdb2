@@ -166,7 +166,7 @@ func TestInfluxdb_Initialize(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			db := new()
+			db := influxdbV2()
 			defer dbtesting.AssertClose(t, db)
 
 			resp, err := db.Initialize(context.Background(), test.req)
@@ -212,7 +212,7 @@ func TestInfluxdb_CreateUser_DefaultUsernameTemplate(t *testing.T) {
 	cleanup, config, ctx := prepareInfluxdbTestContainer(t)
 	defer cleanup()
 
-	db := new()
+	db := influxdbV2()
 	req := dbplugin.InitializeRequest{
 		Config:           config.connectionParams(),
 		VerifyConnection: true,
@@ -246,7 +246,7 @@ func TestInfluxdb_CreateUser_CustomUsernameTemplate(t *testing.T) {
 	cleanup, config, ctx := prepareInfluxdbTestContainer(t)
 	defer cleanup()
 
-	db := new()
+	db := influxdbV2()
 
 	conf := config.connectionParams()
 	conf["username_template"] = "{{.DisplayName}}_{{random 10}}"
@@ -284,7 +284,7 @@ func TestInfluxdb_CreateUser_AddedToOrganization(t *testing.T) {
 	cleanup, config, ctx := prepareInfluxdbTestContainer(t)
 	defer cleanup()
 
-	db := new()
+	db := influxdbV2()
 	req := dbplugin.InitializeRequest{
 		Config:           config.connectionParams(),
 		VerifyConnection: true,
@@ -318,7 +318,7 @@ func TestUpdateUser_expiration(t *testing.T) {
 	cleanup, config, ctx := prepareInfluxdbTestContainer(t)
 	defer cleanup()
 
-	db := new()
+	db := influxdbV2()
 	req := dbplugin.InitializeRequest{
 		Config:           config.connectionParams(),
 		VerifyConnection: true,
@@ -357,7 +357,7 @@ func TestUpdateUser_password(t *testing.T) {
 	cleanup, config, ctx := prepareInfluxdbTestContainer(t)
 	defer cleanup()
 
-	db := new()
+	db := influxdbV2()
 	req := dbplugin.InitializeRequest{
 		Config:           config.connectionParams(),
 		VerifyConnection: true,
@@ -403,7 +403,7 @@ func TestInfluxdb_RevokeDeletedUser(t *testing.T) {
 	cleanup, config, _ := prepareInfluxdbTestContainer(t)
 	defer cleanup()
 
-	db := new()
+	db := influxdbV2()
 	req := dbplugin.InitializeRequest{
 		Config:           config.connectionParams(),
 		VerifyConnection: true,
@@ -426,7 +426,7 @@ func TestInfluxdb_RevokeUser(t *testing.T) {
 	cleanup, config, ctx := prepareInfluxdbTestContainer(t)
 	defer cleanup()
 
-	db := new()
+	db := influxdbV2()
 	req := dbplugin.InitializeRequest{
 		Config:           config.connectionParams(),
 		VerifyConnection: true,

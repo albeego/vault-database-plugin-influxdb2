@@ -1,7 +1,3 @@
-./*.tfstate
-.terraform/
-.terraform.lock.hcl*
-*.log
-.*.swp
-tests/docker-compose.*.yml
-terraform-provider-postgresql
+*~
+cmd/redis-database-plugin/redis-database-plugin
+

@@ -2,12 +2,14 @@ package influxdbv2
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-
 	"github.com/hashicorp/go-secure-stdlib/strutil"
 	"github.com/hashicorp/vault/sdk/database/dbplugin/v5"
+	"github.com/hashicorp/vault/sdk/database/helper/dbutil"
 	"github.com/hashicorp/vault/sdk/helper/template"
 	"github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/domain"
 )
 
 const (
@@ -27,13 +29,13 @@ type InfluxdbV2 struct {
 
 // New returns a new InfluxDBv2 instance
 func New() (interface{}, error) {
-	db := new()
+	db := influxdbV2()
 	dbType := dbplugin.NewDatabaseErrorSanitizerMiddleware(db, db.secretValues)
 
 	return dbType, nil
 }
 
-func new() *InfluxdbV2 {
+func influxdbV2() *InfluxdbV2 {
 	connProducer := &influxdbConnectionProducer{}
 	connProducer.Type = influxdbTypeName
 
@@ -94,6 +96,11 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 		return dbplugin.NewUserResponse{}, err
 	}
 
+	stmt, err := newCreationStatement(req.Statements)
+	if err != nil {
+		return dbplugin.NewUserResponse{}, fmt.Errorf("unable to read creation_statements: %s", err)
+	}
+
 	user, err := cli.UsersAPI().CreateUserWithName(ctx, username)
 	if err != nil {
 		// Attempt rollback only when the response has an error
@@ -130,6 +137,69 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 		}
 		return dbplugin.NewUserResponse{}, fmt.Errorf("failed to run query in InfluxDB: %w", err)
 	}
+	bucket, err := cli.BucketsAPI().FindBucketByName(ctx, i.DefaultBucket)
+	if err != nil {
+		// Attempt rollback only when the response has an error
+		err2 := cli.UsersAPI().DeleteUser(ctx, user)
+		if err2 != nil {
+			return dbplugin.NewUserResponse{}, fmt.Errorf("failed to rollback query in InfluxDB: %w : %s", err, err2)
+		}
+		return dbplugin.NewUserResponse{}, fmt.Errorf("failed to run query in InfluxDB: %w", err)
+	}
+	_, err = cli.BucketsAPI().AddMember(ctx, bucket, user)
+	if err != nil {
+		// Attempt rollback only when the response has an error
+		err2 := cli.UsersAPI().DeleteUser(ctx, user)
+		if err2 != nil {
+			return dbplugin.NewUserResponse{}, fmt.Errorf("failed to rollback query in InfluxDB: %w : %s", err, err2)
+		}
+		return dbplugin.NewUserResponse{}, fmt.Errorf("failed to run query in InfluxDB: %w", err)
+	}
+
+	// create write permission for buckets
+	permissionWrite := &domain.Permission{
+		Action: domain.PermissionActionWrite,
+		Resource: domain.Resource{
+			Type: domain.ResourceTypeBuckets,
+		},
+	}
+
+	// create read permission for buckets
+	permissionRead := &domain.Permission{
+		Action: domain.PermissionActionRead,
+		Resource: domain.Resource{
+			Type: domain.ResourceTypeBuckets,
+		},
+	}
+
+	var permissions []domain.Permission
+
+	if stmt.Read {
+		permissions = append(permissions, *permissionRead)
+	}
+
+	if stmt.Write {
+		permissions = append(permissions, *permissionWrite)
+	}
+
+	// create authorization object using info above
+	auth := &domain.Authorization{
+		OrgID:       organization.Id,
+		Permissions: &permissions,
+		UserID:      user.Id,
+	}
+
+	_, err = cli.AuthorizationsAPI().CreateAuthorization(context.Background(), auth)
+
+	if err != nil {
+		// Attempt rollback only when the response has an error
+		err2 := cli.UsersAPI().DeleteUser(ctx, user)
+		if err2 != nil {
+			return dbplugin.NewUserResponse{}, fmt.Errorf("failed to rollback query in InfluxDB: %w : %s", err, err2)
+		}
+		return dbplugin.NewUserResponse{}, fmt.Errorf("failed to run query in InfluxDB: %w", err)
+	}
+
 	resp = dbplugin.NewUserResponse{
 		Username: username,
 	}
@@ -198,4 +268,22 @@ func (i *InfluxdbV2) changeUserPassword(ctx context.Context, username string, ch
 	}
 
 	return nil
+}
+func newCreationStatement(statements dbplugin.Statements) (*creationStatement, error) {
+	if len(statements.Commands) == 0 {
+		return nil, dbutil.ErrEmptyCreationStatement
+	}
+	if len(statements.Commands) > 1 {
+		return nil, fmt.Errorf("only 1 creation statement supported for creation")
+	}
+	stmt := &creationStatement{}
+	if err := json.Unmarshal([]byte(statements.Commands[0]), stmt); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal %s: %w", []byte(statements.Commands[0]), err)
+	}
+	return stmt, nil
+}
+
+type creationStatement struct {
+	Read  bool `json:"read_permission"`
+	Write bool `json:"write_permission"`
 }

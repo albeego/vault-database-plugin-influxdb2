@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"sync"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/hashicorp/vault/sdk/database/dbplugin/v5"
 	"github.com/hashicorp/vault/sdk/database/helper/connutil"
 	"github.com/hashicorp/vault/sdk/helper/certutil"
-	"github.com/influxdata/influxdb-client-go/v2"
 	"github.com/mitchellh/mapstructure"
 )
 
