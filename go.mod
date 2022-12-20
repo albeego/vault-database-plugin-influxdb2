@@ -1,4 +1,4 @@
-module github.com/hashicorp/vault-plugin-database-inflxudbv2
+module github.com/hashicorp/vault-plugin-database-influxdbv2
 
 go 1.18
 

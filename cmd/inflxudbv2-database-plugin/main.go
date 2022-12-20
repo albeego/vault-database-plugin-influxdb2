@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/hashicorp/go-hclog"
-	influxdbv2 "github.com/hashicorp/vault-plugin-database-inflxudbv2"
+	influxdbv2 "github.com/hashicorp/vault-plugin-database-influxdbv2"
 	"github.com/hashicorp/vault/sdk/database/dbplugin/v5"
 	"os"
 )

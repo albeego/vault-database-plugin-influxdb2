@@ -5,7 +5,7 @@ secrets engine. This plugin generates database credentials dynamically based on
 configured roles for the Influxdb database.
 
 ## Build
-To build this package for any platform you will need to clone this repository and cd into the repo directory and `go build -o inflxudbv2-database-plugin cmd/inflxudbv2-database-plugin/main.go`.
+To build this package for any platform you will need to clone this repository and cd into the repo directory and `go build -o influxdbv2-database-plugin cmd/influxdbv2-database-plugin/main.go`.
 
 ## Configure Connection
 
