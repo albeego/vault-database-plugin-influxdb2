@@ -21,7 +21,7 @@ jobs:
         go build -o influxdbv2-database-plugin cmd/influxdbv2-database-plugin/main.go
     - name: Calculate SHA256 checksum
       run: |
-        sha256 sum vault/plugins/vault-plugin-secrets-hashicups | cut -d ' ' -f1 > influxdbv2-database-plugin.sha256
+        sha256sum influxdbv2-database-plugin | cut -d ' ' -f1 > influxdbv2-database-plugin.sha256
     - name: Create GitHub release
       uses: actions/create-release@v1
       id: create_release
