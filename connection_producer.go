@@ -203,7 +203,7 @@ func (i *influxdbConnectionProducer) createClient() (influxdb2.Client, error) {
 		options := influxdb2.Options{}
 		options.SetTLSConfig(tlsConfig)
 
-		cli = influxdb2.NewClientWithOptions(fmt.Sprintf("http://%s:%s", i.Host, i.Port), i.Token, &options)
+		cli = influxdb2.NewClientWithOptions(fmt.Sprintf("https://%s:%s", i.Host, i.Port), i.Token, &options)
 	} else {
 		cli = influxdb2.NewClient(fmt.Sprintf("http://%s:%s", i.Host, i.Port), i.Token)
 	}
