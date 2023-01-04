@@ -156,8 +156,16 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 		return dbplugin.NewUserResponse{}, fmt.Errorf("failed to run query in InfluxDB: %w", err)
 	}
 
+	// create write permission for authorizations
+	authorizationWrite := &domain.Permission{
+		Action: domain.PermissionActionWrite,
+		Resource: domain.Resource{
+			Type: domain.ResourceTypeAuthorizations,
+		},
+	}
+
 	// create write permission for buckets
-	permissionWrite := &domain.Permission{
+	bucketWrite := &domain.Permission{
 		Action: domain.PermissionActionWrite,
 		Resource: domain.Resource{
 			Type: domain.ResourceTypeBuckets,
@@ -165,7 +173,7 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 	}
 
 	// create read permission for buckets
-	permissionRead := &domain.Permission{
+	bucketRead := &domain.Permission{
 		Action: domain.PermissionActionRead,
 		Resource: domain.Resource{
 			Type: domain.ResourceTypeBuckets,
@@ -174,12 +182,14 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 
 	var permissions []domain.Permission
 
+	permissions = append(permissions, *authorizationWrite)
+
 	if stmt.Read {
-		permissions = append(permissions, *permissionRead)
+		permissions = append(permissions, *bucketRead)
 	}
 
 	if stmt.Write {
-		permissions = append(permissions, *permissionWrite)
+		permissions = append(permissions, *bucketWrite)
 	}
 
 	// create authorization object using info above
