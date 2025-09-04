@@ -3,11 +3,11 @@ package influxdbv2
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"sync"
 	"time"
+
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 
 	"github.com/hashicorp/go-secure-stdlib/parseutil"
 	"github.com/hashicorp/go-secure-stdlib/tlsutil"
@@ -237,7 +237,7 @@ func (i *influxdbConnectionProducer) secretValues() map[string]string {
 func isTokenSufficientAccess(ctx context.Context, cli influxdb2.Client, token string) (bool, error) {
 	authorizations, err := cli.AuthorizationsAPI().GetAuthorizations(ctx)
 	if err != nil {
-		return false, errors.New("cannot access authorizations API to check token")
+		return false, fmt.Errorf("cannot access authorizations API to check token: %w", err)
 	}
 	hasUserRead := false
 	hasUserWrite := false
