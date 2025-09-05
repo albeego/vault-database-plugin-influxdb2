@@ -83,7 +83,7 @@ func (i *influxdbConnectionProducer) Initialize(ctx context.Context, req dbplugi
 		}
 		certBundle, err = parsedCertBundle.ToCertBundle()
 		if err != nil {
-			return dbplugin.InitializeResponse{}, fmt.Errorf("Error marshaling PEM information: %w", err)
+			return dbplugin.InitializeResponse{}, fmt.Errorf("error marshaling PEM information: %w", err)
 		}
 		i.certificate = certBundle.Certificate
 		i.privateKey = certBundle.PrivateKey
@@ -93,11 +93,11 @@ func (i *influxdbConnectionProducer) Initialize(ctx context.Context, req dbplugi
 	case len(i.PemBundle) != 0:
 		parsedCertBundle, err = certutil.ParsePEMBundle(i.PemBundle)
 		if err != nil {
-			return dbplugin.InitializeResponse{}, fmt.Errorf("Error parsing the given PEM information: %w", err)
+			return dbplugin.InitializeResponse{}, fmt.Errorf("error parsing the given PEM information: %w", err)
 		}
 		certBundle, err = parsedCertBundle.ToCertBundle()
 		if err != nil {
-			return dbplugin.InitializeResponse{}, fmt.Errorf("Error marshaling PEM information: %w", err)
+			return dbplugin.InitializeResponse{}, fmt.Errorf("error marshaling PEM information: %w", err)
 		}
 		i.certificate = certBundle.Certificate
 		i.privateKey = certBundle.PrivateKey
@@ -192,7 +192,7 @@ func (i *influxdbConnectionProducer) createClient() (influxdb2.Client, error) {
 			var ok bool
 			tlsConfig.MinVersion, ok = tlsutil.TLSLookup[i.TLSMinVersion]
 			if !ok {
-				return nil, fmt.Errorf("invalid 'tls_min_version' in config")
+				return nil, fmt.Errorf("invalid 'tls_min_version' in config: %s", i.TLSMinVersion)
 			}
 		} else {
 			// MinVersion was not being set earlier. Reset it to
