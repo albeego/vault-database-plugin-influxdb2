@@ -221,6 +221,17 @@ func deleteUser(ctx context.Context, cli influxdb2.Client, username string) erro
 	if err != nil {
 		return err
 	}
+
+	auths, err := cli.AuthorizationsAPI().FindAuthorizationsByUserName(ctx, username)
+	if err != nil {
+		return fmt.Errorf("failed to list authorizations for user %s: %w", username, err)
+	}
+	for _, auth := range *auths {
+		if err := cli.AuthorizationsAPI().DeleteAuthorization(ctx, &auth); err != nil {
+			return fmt.Errorf("failed to delete authorization %s for user %s: %w", *auth.Id, username, err)
+		}
+	}
+
 	err = cli.UsersAPI().DeleteUser(ctx, user)
 	if err != nil {
 		return err
