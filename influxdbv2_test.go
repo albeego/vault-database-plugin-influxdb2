@@ -442,15 +442,18 @@ func TestInfluxdb_RevokeDeletedUser(t *testing.T) {
 	}
 	dbtesting.AssertInitialize(t, db, req)
 
-	// attempt to revoke a user that does not exist
+	// Revoking a user that does not exist must succeed (idempotent delete):
+	// the user is already gone, and failing here would make Vault retry the
+	// lease forever (leases pile up whenever users are removed externally,
+	// e.g. after the InfluxDB instance is rebuilt).
 	delReq := dbplugin.DeleteUserRequest{
 		Username: "someuser",
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, err := db.DeleteUser(ctx, delReq)
-	if err == nil {
-		t.Fatalf("Expected err, got nil")
+	if err != nil {
+		t.Fatalf("Expected nil deleting a nonexistent user, got: %s", err)
 	}
 }
 

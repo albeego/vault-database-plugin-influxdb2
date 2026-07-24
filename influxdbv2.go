@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/go-secure-stdlib/strutil"
 	"github.com/hashicorp/vault/sdk/database/dbplugin/v5"
 	"github.com/hashicorp/vault/sdk/database/helper/dbutil"
@@ -103,11 +105,8 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 
 	user, err := cli.UsersAPI().CreateUserWithName(ctx, username)
 	if err != nil {
-		// Attempt rollback only when the response has an error
-		err2 := cli.UsersAPI().DeleteUser(ctx, user)
-		if err2 != nil {
-			return dbplugin.NewUserResponse{}, fmt.Errorf("failed to rollback query in InfluxDB: %w : %s", err, err2)
-		}
+		// Nothing to roll back: the user was not created (and user is nil here,
+		// so a rollback DeleteUser would panic).
 		return dbplugin.NewUserResponse{}, fmt.Errorf("failed to run query in InfluxDB: %w", err)
 	}
 	err = cli.UsersAPI().UpdateUserPassword(ctx, user, req.Password)
@@ -199,7 +198,7 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 		UserID:      user.Id,
 	}
 
-	_, err = cli.AuthorizationsAPI().CreateAuthorization(context.Background(), auth)
+	_, err = cli.AuthorizationsAPI().CreateAuthorization(ctx, auth)
 
 	if err != nil {
 		// Attempt rollback only when the response has an error
@@ -216,24 +215,40 @@ func (i *InfluxdbV2) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (
 	return resp, nil
 }
 
+// isNotFoundErr reports whether an InfluxDB API error means the resource does
+// not exist (as opposed to a connectivity or permission failure).
+func isNotFoundErr(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "not found")
+}
+
+// deleteUser is idempotent: a user or authorization that no longer exists is
+// treated as already deleted. Revocation must succeed in that case, otherwise
+// Vault retries the lease forever and dead leases accumulate (e.g. after the
+// InfluxDB instance is rebuilt and all dynamic users are gone).
 func deleteUser(ctx context.Context, cli influxdb2.Client, username string) error {
 	user, err := cli.UsersAPI().FindUserByName(ctx, username)
 	if err != nil {
+		if isNotFoundErr(err) {
+			return nil
+		}
 		return err
 	}
 
 	auths, err := cli.AuthorizationsAPI().FindAuthorizationsByUserName(ctx, username)
 	if err != nil {
-		return fmt.Errorf("failed to list authorizations for user %s: %w", username, err)
-	}
-	for _, auth := range *auths {
-		if err := cli.AuthorizationsAPI().DeleteAuthorization(ctx, &auth); err != nil {
-			return fmt.Errorf("failed to delete authorization %s for user %s: %w", *auth.Id, username, err)
+		if !isNotFoundErr(err) {
+			return fmt.Errorf("failed to list authorizations for user %s: %w", username, err)
+		}
+	} else {
+		for _, auth := range *auths {
+			if err := cli.AuthorizationsAPI().DeleteAuthorization(ctx, &auth); err != nil && !isNotFoundErr(err) {
+				return fmt.Errorf("failed to delete authorization %s for user %s: %w", *auth.Id, username, err)
+			}
 		}
 	}
 
 	err = cli.UsersAPI().DeleteUser(ctx, user)
-	if err != nil {
+	if err != nil && !isNotFoundErr(err) {
 		return err
 	}
 

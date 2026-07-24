@@ -110,8 +110,19 @@ func (i *influxdbConnectionProducer) Initialize(ctx context.Context, req dbplugi
 	i.Initialized = true
 
 	if req.VerifyConnection {
-		if _, err := i.Connection(ctx); err != nil {
+		conn, err := i.Connection(ctx)
+		if err != nil {
 			return dbplugin.InitializeResponse{}, fmt.Errorf("error verifying connection: %w", err)
+		}
+		// Only gate on token permissions when explicitly verifying: running
+		// this on every connection would make lease revocations depend on the
+		// authorizations API being available and the admin token being listed.
+		isSufficientAccess, err := isTokenSufficientAccess(ctx, conn.(influxdb2.Client), i.Token)
+		if err != nil {
+			return dbplugin.InitializeResponse{}, fmt.Errorf("error verifying connection: error getting if provided username is admin: %w", err)
+		}
+		if !isSufficientAccess {
+			return dbplugin.InitializeResponse{}, fmt.Errorf("error verifying connection: the provided user is missing permissions on the influxDB server")
 		}
 	}
 
@@ -122,7 +133,7 @@ func (i *influxdbConnectionProducer) Initialize(ctx context.Context, req dbplugi
 	return resp, nil
 }
 
-func (i *influxdbConnectionProducer) Connection(_ context.Context) (interface{}, error) {
+func (i *influxdbConnectionProducer) Connection(ctx context.Context) (interface{}, error) {
 	if !i.Initialized {
 		return nil, connutil.ErrNotInitialized
 	}
@@ -132,7 +143,7 @@ func (i *influxdbConnectionProducer) Connection(_ context.Context) (interface{},
 		return i.client, nil
 	}
 
-	cli, err := i.createClient()
+	cli, err := i.createClient(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -157,8 +168,12 @@ func (i *influxdbConnectionProducer) Close() error {
 	return nil
 }
 
-func (i *influxdbConnectionProducer) createClient() (influxdb2.Client, error) {
+func (i *influxdbConnectionProducer) createClient(ctx context.Context) (influxdb2.Client, error) {
 	var cli influxdb2.Client
+	options := influxdb2.DefaultOptions()
+	if secs := uint(i.connectTimeout.Seconds()); secs > 0 {
+		options.SetHTTPRequestTimeout(secs)
+	}
 	if i.TLS {
 		tlsConfig := &tls.Config{}
 		if len(i.certificate) > 0 || len(i.issuingCA) > 0 {
@@ -200,27 +215,23 @@ func (i *influxdbConnectionProducer) createClient() (influxdb2.Client, error) {
 			tlsConfig.MinVersion = 0
 		}
 
-		options := influxdb2.Options{}
 		options.SetTLSConfig(tlsConfig)
 
-		cli = influxdb2.NewClientWithOptions(fmt.Sprintf("https://%s:%s", i.Host, i.Port), i.Token, &options)
+		cli = influxdb2.NewClientWithOptions(fmt.Sprintf("https://%s:%s", i.Host, i.Port), i.Token, options)
 	} else {
-		cli = influxdb2.NewClient(fmt.Sprintf("http://%s:%s", i.Host, i.Port), i.Token)
+		cli = influxdb2.NewClientWithOptions(fmt.Sprintf("http://%s:%s", i.Host, i.Port), i.Token, options)
 	}
 
 	// Checking server status
-	_, err := cli.Ping(context.Background())
+	pingCtx := ctx
+	if i.connectTimeout > 0 {
+		var cancel context.CancelFunc
+		pingCtx, cancel = context.WithTimeout(ctx, i.connectTimeout)
+		defer cancel()
+	}
+	_, err := cli.Ping(pingCtx)
 	if err != nil {
 		return nil, fmt.Errorf("error checking cluster status: %w", err)
-	}
-
-	// verifying infos about the connection
-	isSufficientAccess, err := isTokenSufficientAccess(context.Background(), cli, i.Token)
-	if err != nil {
-		return nil, fmt.Errorf("error getting if provided username is admin: %w", err)
-	}
-	if !isSufficientAccess {
-		return nil, fmt.Errorf("the provided user is missing permissions on the influxDB server")
 	}
 
 	return cli, nil
@@ -235,7 +246,14 @@ func (i *influxdbConnectionProducer) secretValues() map[string]string {
 }
 
 func isTokenSufficientAccess(ctx context.Context, cli influxdb2.Client, token string) (bool, error) {
-	authorizations, err := cli.AuthorizationsAPI().GetAuthorizations(ctx)
+	// Resolve the token's own user first: the global authorizations listing is
+	// paginated, so on servers with many authorizations the provided token may
+	// not appear in the first page even when it is valid.
+	me, err := cli.UsersAPI().Me(ctx)
+	if err != nil {
+		return false, fmt.Errorf("cannot access me API to check token: %w", err)
+	}
+	authorizations, err := cli.AuthorizationsAPI().FindAuthorizationsByUserName(ctx, me.Name)
 	if err != nil {
 		return false, fmt.Errorf("cannot access authorizations API to check token: %w", err)
 	}
