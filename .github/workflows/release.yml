@@ -3,6 +3,13 @@ on:
   push:
     tags:
     - 'v*'
+
+# Declared explicitly so this workflow keeps working when the org default
+# is set to read-only. A permissions block REPLACES the default entirely,
+# so everything the workflow needs must be listed - including contents.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
