@@ -257,32 +257,58 @@ func isTokenSufficientAccess(ctx context.Context, cli influxdb2.Client, token st
 	if err != nil {
 		return false, fmt.Errorf("cannot access authorizations API to check token: %w", err)
 	}
+
+	// InfluxDB no longer echoes token values back in authorization listings.
+	// 2.7 returns the real token; from 2.8 the field is present but empty, so
+	// the provided token cannot be matched against its own listing entry.
+	// Where the value is still returned we keep using it, because it is the
+	// precise check - it verifies the permissions of *this* token rather than
+	// of some other authorization the same user happens to own.
+	matched := false
 	hasUserRead := false
 	hasUserWrite := false
 	hasOrganizationsRead := false
 	hasOrganizationsWrite := false
 	for _, authorization := range *authorizations {
-		if *authorization.Token == token {
-			for _, permission := range *authorization.Permissions {
-				if permission.Action == "read" && permission.Resource.Type == "users" {
-					hasUserRead = true
-				}
-				if permission.Action == "write" && permission.Resource.Type == "users" {
-					hasUserWrite = true
-				}
+		if authorization.Token == nil || *authorization.Token != token {
+			continue
+		}
+		matched = true
+		for _, permission := range *authorization.Permissions {
+			if permission.Action == "read" && permission.Resource.Type == "users" {
+				hasUserRead = true
 			}
-			for _, permission := range *authorization.Permissions {
-				if permission.Action == "read" && permission.Resource.Type == "orgs" {
-					hasOrganizationsRead = true
-				}
-				if permission.Action == "write" && permission.Resource.Type == "orgs" {
-					hasOrganizationsWrite = true
-				}
+			if permission.Action == "write" && permission.Resource.Type == "users" {
+				hasUserWrite = true
+			}
+			if permission.Action == "read" && permission.Resource.Type == "orgs" {
+				hasOrganizationsRead = true
+			}
+			if permission.Action == "write" && permission.Resource.Type == "orgs" {
+				hasOrganizationsWrite = true
 			}
 		}
 	}
-	if hasUserRead && hasUserWrite && hasOrganizationsRead && hasOrganizationsWrite {
-		return true, nil
+
+	if matched {
+		if hasUserRead && hasUserWrite && hasOrganizationsRead && hasOrganizationsWrite {
+			return true, nil
+		}
+		return false, fmt.Errorf("the provided token does not have sufficient permissions in influxdb hasUserRead: %t, hasUserWrite: %t, hasOrganizationsRead: %t, hasOrganizationsWrite: %t", hasUserRead, hasUserWrite, hasOrganizationsRead, hasOrganizationsWrite)
 	}
-	return false, fmt.Errorf("the provided token does not have sufficient permissions in influxdb hasUserRead: %t, hasUserWrite: %t, hasOrganizationsRead: %t, hasOrganizationsWrite: %t", hasUserRead, hasUserWrite, hasOrganizationsRead, hasOrganizationsWrite)
+
+	// The server redacted every token value, so fall back to exercising the
+	// read paths this plugin depends on. Write access is deliberately not
+	// probed: there is no side-effect-free way to do so, and a missing write
+	// permission surfaces immediately and legibly on the first user creation.
+	if _, err := cli.UsersAPI().FindUserByName(ctx, me.Name); err != nil {
+		return false, fmt.Errorf("the provided token cannot read users in influxdb: %w", err)
+	}
+	if me.Id == nil {
+		return false, fmt.Errorf("influxdb did not return an id for the token's own user, cannot verify organization access")
+	}
+	if _, err := cli.OrganizationsAPI().FindOrganizationsByUserID(ctx, *me.Id); err != nil {
+		return false, fmt.Errorf("the provided token cannot read organizations in influxdb: %w", err)
+	}
+	return true, nil
 }
