@@ -9,6 +9,7 @@ on:
 # so everything the workflow needs must be listed - including contents.
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -29,6 +30,39 @@ jobs:
     - name: Calculate SHA256 checksum
       run: |
         sha256sum influxdbv2-database-plugin | cut -d ' ' -f1 > influxdbv2-database-plugin.sha256
+    - name: Login to GHCR
+      uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # albeego/vault consumes this plugin from its Dockerfile. A release asset
+    # can only be fetched anonymously, which ties that build to this repo
+    # staying public. Publishing the binary as a package instead means the
+    # consumer authenticates to GHCR - which its build already does - so the
+    # fetch keeps working whatever this repo's visibility is set to.
+    #
+    # Pushed before the release is cut so a tag produces both or neither.
+    - name: Publish plugin as OCI artifact
+      run: |
+        printf 'FROM scratch\nCOPY influxdbv2-database-plugin /influxdbv2-database-plugin\n' > Dockerfile.plugin
+        IMAGE="ghcr.io/${{ github.repository_owner }}/vault-database-plugin-influxdb2"
+        docker build -f Dockerfile.plugin -t "${IMAGE}:${{ github.ref_name }}" .
+        docker push "${IMAGE}:${{ github.ref_name }}"
+
+    - name: Report digest to pin
+      run: |
+        IMAGE="ghcr.io/${{ github.repository_owner }}/vault-database-plugin-influxdb2"
+        REPO_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${{ github.ref_name }}")"
+        {
+          echo '### Pin this in albeego/vault'
+          echo
+          echo '```dockerfile'
+          echo "FROM ${IMAGE}:${{ github.ref_name }}@${REPO_DIGEST#*@} AS influxdb-plugin"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
     - name: Create GitHub release
       uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
       with:
