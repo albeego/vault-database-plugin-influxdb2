@@ -51,10 +51,10 @@ jobs:
       - name: Vulnerability scan
         run: |
           # govulncheck must be built with a toolchain at least as new as the
-          # module's, or it refuses the analysis:
-          #   package requires newer Go version go1.27 (application built with go1.26)
-          # `go install pkg@latest` resolves govulncheck's own go directive, not
-          # ours, so pin the toolchain to the one setup-go installed for us.
-          GOTOOLCHAIN="go$(go env GOVERSION | sed 's/^go//')" \
-            go install golang.org/x/vuln/cmd/govulncheck@latest
+          # module's, or it refuses the analysis. Its own go directive can be
+          # NEWER than this module (govulncheck@latest needs go1.26 while this
+          # module is on go1.25.7), so let Go fetch whatever toolchain govulncheck
+          # requires for the install -- newer than the module either way, which
+          # is what the analysis needs -- rather than pinning to the module's.
+          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
           "$(go env GOPATH)/bin/govulncheck" ./...
