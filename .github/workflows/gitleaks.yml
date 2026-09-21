@@ -1,0 +1,19 @@
+name: Gitleaks Scan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Required because this workflow calls gitleaks.yml, which declares these
+# permissions itself. A reusable workflow may not request more than its
+# CALLER holds, so without this the run fails at parse time - startup_failure,
+# zero jobs - once the org default token is read-only.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gitleaks:
+    if: ${{ github.event.pull_request.draft == false }}
+    uses: albeego/central-workflows/.github/workflows/gitleaks.yml@main
+    secrets: inherit

@@ -1,0 +1,10 @@
+name: Hadolint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  hadolint:
+    if: ${{ github.event.pull_request.draft == false }}
+    uses: albeego/central-workflows/.github/workflows/hadolint.yml@main
