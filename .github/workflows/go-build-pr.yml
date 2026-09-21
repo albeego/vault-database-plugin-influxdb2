@@ -1,0 +1,60 @@
+# Compile and test the PR's merge result. The security scans don't compile the
+# code, so a textually-clean merge that doesn't build (duplicate jwtUsername,
+# 2026-08-12) sails through PR checks and breaks main's image build instead.
+# actions/checkout on pull_request checks out the merge commit, so this
+# validates exactly what main would become.
+name: Go build & test
+
+on:
+  pull_request:
+    branches: ['main']
+
+jobs:
+  go-build:
+    name: go build / vet / test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout merge result
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Cache Go modules
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      # Reachability-based, so it reports what this code can actually call
+      # rather than everything in go.sum. It covers the Go standard library as
+      # well as modules -- which is the gap that let go.mod sit on 1.25.0,
+      # thirteen patch releases behind, with 35 reachable stdlib findings and
+      # nothing in CI to say so. Found by hand in September 2026; this is so it
+      # is not found by hand next time.
+      - name: Vulnerability scan
+        run: |
+          # govulncheck must be built with a toolchain at least as new as the
+          # module's, or it refuses the analysis. Its own go directive can be
+          # NEWER than this module (govulncheck@latest needs go1.26 while this
+          # module is on go1.25.7), so let Go fetch whatever toolchain govulncheck
+          # requires for the install -- newer than the module either way, which
+          # is what the analysis needs -- rather than pinning to the module's.
+          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...

@@ -1,0 +1,10 @@
+name: Gosec
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  gosec:
+    if: ${{ github.event.pull_request.draft == false }}
+    uses: albeego/central-workflows/.github/workflows/gosec.yml@main

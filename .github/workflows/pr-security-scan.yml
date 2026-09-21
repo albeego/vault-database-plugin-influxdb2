@@ -1,0 +1,9 @@
+name: PR Security Scan
+
+on:
+  pull_request:
+    branches: ['main']
+
+jobs:
+  trivy-pr:
+    uses: albeego/central-workflows/.github/workflows/trivy-pr.yml@main
