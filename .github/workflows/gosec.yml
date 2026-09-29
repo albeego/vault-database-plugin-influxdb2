@@ -1,0 +1,40 @@
+# Self-contained, unlike every other Go repo here, which calls
+# albeego/central-workflows/.github/workflows/gosec.yml@main.
+#
+# This repository is PUBLIC and central-workflows is PRIVATE, so a caller here
+# cannot resolve it: the run dies at parse time with startup_failure and zero
+# jobs, and GitHub labels it with the file path instead of the workflow name.
+# Running gosec directly is the only form that works until that visibility
+# mismatch is resolved. See ENG-1070.
+name: Gosec
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  gosec:
+    name: gosec
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      # From go.mod, so the analysis matches the module rather than the newest
+      # released Go. A module ahead of the analyser cannot be scanned at all,
+      # which in device-portal-agent produced "Files: 0 Issues: 0" beside a red
+      # check.
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      # Pinned, not @latest: `@latest` on this module path resolves to a 2020
+      # pseudo-version that reports its own version as "dev".
+      - name: Install gosec
+        run: GOTOOLCHAIN="go$(go env GOVERSION | sed 's/^go//')" go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
+
+      - name: Run gosec
+        run: "$(go env GOPATH)/bin/gosec -fmt=text ./..."

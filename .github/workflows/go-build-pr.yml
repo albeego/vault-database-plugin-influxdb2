@@ -1,0 +1,59 @@
+# Compile, test and vulnerability-scan the PR's merge result.
+#
+# This repository had no PR CI at all: release.yml runs only after a merge to
+# main, so nothing compiled the code, ran influxdbv2_test.go or scanned it
+# before it landed. This plugin is how Vault reaches InfluxDB, so a broken
+# merge here is discovered by the secrets engine failing, not by a test.
+#
+# actions/checkout on pull_request checks out the merge commit, so this
+# validates exactly what main would become.
+name: Go build & test
+
+on:
+  pull_request:
+    branches: ['main']
+
+permissions:
+  contents: read
+
+jobs:
+  go-build:
+    name: go build / vet / test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout merge result
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      # Read the version from go.mod rather than pinning it here: two statements
+      # of the same fact drift.
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Cache Go modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      # govulncheck is deliberately absent, unlike the other Go repos.
+      # x/vuln@latest requires go >= 1.26.0 and this module declares 1.25.7, so
+      # the install step fails outright here. It also currently reports 21
+      # reachable vulnerabilities -- 17 in the standard library, plus grpc and
+      # otel, which PRs #10 and #15 already fix. Adding it now would ship a
+      # check that cannot pass. ENG-1069 bumps the dependencies and adds it.
