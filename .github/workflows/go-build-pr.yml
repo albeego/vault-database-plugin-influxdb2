@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   go-build:
-    name: go build / vet / test
+    name: go build / vet / test / govulncheck
     runs-on: ubuntu-latest
     steps:
       - name: Checkout merge result
@@ -51,9 +51,22 @@ jobs:
       - name: Test
         run: go test ./...
 
-      # govulncheck is deliberately absent, unlike the other Go repos.
-      # x/vuln@latest requires go >= 1.26.0 and this module declares 1.25.7, so
-      # the install step fails outright here. It also currently reports 21
-      # reachable vulnerabilities -- 17 in the standard library, plus grpc and
-      # otel, which PRs #10 and #15 already fix. Adding it now would ship a
-      # check that cannot pass. ENG-1069 bumps the dependencies and adds it.
+      # Reachability-based, so it reports what this code can actually call
+      # rather than everything in go.sum, and it covers the Go standard library
+      # as well as modules. That stdlib coverage is the point: a module pinned to
+      # an old patch release carries every unfixed stdlib bug with it, and
+      # nothing else in CI looks at that.
+      #
+      # Gated through a script rather than run bare, because govulncheck has no
+      # ignore mechanism and exits non-zero on any finding. Two Moby findings are
+      # unfixable from here -- see .govulncheck-allow. Anything not in that file
+      # fails the build.
+      - name: Vulnerability scan
+        run: |
+          # govulncheck must be built with a toolchain at least as new as the
+          # module's, or it refuses the analysis. `go install pkg@latest`
+          # resolves govulncheck's own go directive, not ours, so pin the
+          # toolchain to the one setup-go installed for us.
+          GOTOOLCHAIN="go$(go env GOVERSION | sed 's/^go//')" \
+            go install golang.org/x/vuln/cmd/govulncheck@latest
+          PATH="$(go env GOPATH)/bin:$PATH" ./scripts/govulncheck-gate.sh
