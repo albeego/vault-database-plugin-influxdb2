@@ -1,0 +1,26 @@
+# Vulnerabilities govulncheck may report without failing the build.
+#
+# One OSV ID per line. Anything NOT listed here fails CI, so this file is the
+# only way a finding is tolerated -- a new vulnerability cannot slip through.
+#
+# Review this list whenever vault/sdk is upgraded: both entries below exist
+# only because the SDK drags the Docker client in, and they should be deleted
+# the moment it stops doing so.
+
+# GO-2026-4883  Moby: off-by-one in plugin privilege validation
+# GO-2026-4887  Moby: AuthZ plugin bypass on oversized request bodies
+#
+# Both are flaws in the Docker DAEMON's plugin authorization. This plugin runs
+# no daemon and makes no Docker API calls: `go mod why github.com/docker/docker`
+# reports "main module does not need package", and every trace govulncheck
+# prints is a package init() chain reached through
+# hashicorp/vault/sdk -> helper/connutil, not a call into the vulnerable code.
+#
+# They cannot be fixed by upgrading. The fix is published as
+# github.com/moby/moby/v2 v2.0.0-beta.8, a different module path, so
+# github.com/docker/docker has no fixed version at all ("Fixed in: N/A").
+# The requirement comes from hashicorp/vault/sdk v0.20.0 and
+# hashicorp/go-secure-stdlib/plugincontainer v0.4.2, so it is not ours to drop
+# and `go mod tidy` keeps it.
+GO-2026-4883
+GO-2026-4887
